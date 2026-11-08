@@ -1,9 +1,13 @@
 import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
 import { useRef } from "react";
+import type { NoteOption } from "./lib/notes";
+import { NOTE_OPTIONS, noteColor } from "./lib/notes";
 
 const TIME_TICK_POSITIONS = [0, 1 / 3, 2 / 3, 1];
 const DENSE_FREQUENCY_TICKS = [60, 70, 80, 90, 100, 125, 150, 200, 250, 300, 400, 500, 600, 800, 1_000];
 const WIDE_FREQUENCY_TICKS = [20, 50, 100, 200, 500, 1_000, 2_000, 5_000, 10_000, 20_000];
+const DENSE_GRID_TICKS = [60, 100, 200, 400, 600, 800, 1_000];
+const WIDE_GRID_TICKS = [20, 100, 500, 1_000, 5_000, 20_000];
 
 type SpectrogramAxesProps = {
   width: number;
@@ -15,6 +19,10 @@ type SpectrogramAxesProps = {
   maxColor: number;
   minFrequency: number;
   maxFrequency: number;
+  highlightedNoteFrequency: number | null;
+  highlightedNoteColor: string | null;
+  selectedNotes: NoteOption[];
+  isDarkMode: boolean;
   panOffsetPixels: number;
   onPanOffsetChange: (offset: number) => void;
   onStartPanning: () => void;
@@ -37,6 +45,10 @@ export function SpectrogramAxes({
   maxColor,
   minFrequency,
   maxFrequency,
+  highlightedNoteFrequency,
+  highlightedNoteColor,
+  selectedNotes,
+  isDarkMode,
   panOffsetPixels,
   onPanOffsetChange,
   onStartPanning,
@@ -47,6 +59,7 @@ export function SpectrogramAxes({
   const baseFrequencyTicks = maxFrequency / minFrequency > 20
     ? WIDE_FREQUENCY_TICKS
     : DENSE_FREQUENCY_TICKS;
+  const baseGridTicks = maxFrequency / minFrequency > 20 ? WIDE_GRID_TICKS : DENSE_GRID_TICKS;
   const frequencyTicks = [...new Set([
     minFrequency,
     ...baseFrequencyTicks.filter((frequency) => frequency > minFrequency && frequency < maxFrequency),
@@ -54,7 +67,7 @@ export function SpectrogramAxes({
   ])].sort((a, b) => a - b);
   const gridFrequencies = [...new Set([
     minFrequency,
-    ...baseFrequencyTicks.filter((frequency) => frequency > minFrequency && frequency < maxFrequency),
+    ...baseGridTicks.filter((frequency) => frequency > minFrequency && frequency < maxFrequency),
     maxFrequency,
   ])].sort((a, b) => a - b);
   const decibelTickCount = Math.min(5, Math.floor(maxColor - minColor) + 1);
@@ -135,6 +148,81 @@ export function SpectrogramAxes({
               />
             );
           })}
+          {selectedNotes
+            .filter((note) => note.frequency >= minFrequency && note.frequency <= maxFrequency)
+            .map((note) => {
+              const y = height * (1 - Math.log(note.frequency / minFrequency) / logRange);
+              const color = noteColor(note.color, isDarkMode);
+              const labelY = Math.max(13, Math.min(height - 3, y - 5));
+              return (
+                <g key={`selected-note-${note.midi}`}>
+                  <line
+                    x1="0"
+                    y1={y}
+                    x2={width}
+                    y2={y}
+                    stroke={color}
+                    strokeOpacity="0.65"
+                    strokeWidth="1.5"
+                  />
+                  <text
+                    x="6"
+                    y={labelY}
+                    fill={color}
+                    stroke="var(--background)"
+                    strokeWidth="4"
+                    strokeLinejoin="round"
+                    paintOrder="stroke"
+                    fontSize="12"
+                    fontWeight="600"
+                  >
+                    {note.name}
+                  </text>
+                </g>
+              );
+            })}
+          {highlightedNoteFrequency !== null &&
+            highlightedNoteColor !== null &&
+            highlightedNoteFrequency >= minFrequency &&
+            highlightedNoteFrequency <= maxFrequency && (() => {
+              const y = height * (1 - Math.log(highlightedNoteFrequency / minFrequency) / logRange);
+              return (
+                <g key="active-note">
+                  <line
+                    x1="0"
+                    y1={y}
+                    x2={width}
+                    y2={y}
+                    stroke={highlightedNoteColor}
+                    strokeOpacity="0.32"
+                    strokeWidth="10"
+                  />
+                  <line
+                    x1="0"
+                    y1={y}
+                    x2={width}
+                    y2={y}
+                    stroke={highlightedNoteColor}
+                    strokeWidth="2"
+                  />
+                  {!selectedNotes.some((note) => note.frequency === highlightedNoteFrequency) && (
+                    <text
+                      x="6"
+                      y={Math.max(13, Math.min(height - 3, y - 5))}
+                      fill={highlightedNoteColor}
+                      stroke="var(--background)"
+                      strokeWidth="4"
+                      strokeLinejoin="round"
+                      paintOrder="stroke"
+                      fontSize="12"
+                      fontWeight="600"
+                    >
+                      {NOTE_OPTIONS.find((note) => note.frequency === highlightedNoteFrequency)?.name}
+                    </text>
+                  )}
+                </g>
+              );
+            })()}
         </svg>
         {children}
       </div>

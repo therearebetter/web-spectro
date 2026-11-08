@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, MousePointer2 } from "lucide-react";
 import { Button } from "./components/ui/button";
+import { Toggle } from "./components/ui/toggle";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Slider } from "./components/ui/slider";
 import { Separator } from "./components/ui/separator";
+import { NOTE_OPTIONS, noteButtonClass } from "./lib/notes";
 
 type SettingsProps = {
   timeRange: number;
@@ -19,6 +21,13 @@ type SettingsProps = {
   onMinColorChange: (value: number) => void;
   maxColor: number;
   onMaxColorChange: (value: number) => void;
+  enabledNotes: number[];
+  onEnabledNotesChange: (notes: number[]) => void;
+  onHoverNote: (midi: number | null) => void;
+  onStartPreviewNote: (midi: number) => void;
+  onStopPreviewNote: (midi: number) => void;
+  playNotesOnHover: boolean;
+  onPlayNotesOnHoverChange: (enabled: boolean) => void;
 };
 
 const FFT_SIZES = [2_048, 4_096, 8_192, 16_384, 32_768];
@@ -26,8 +35,10 @@ const MIN_ALLOWED_FREQUENCY = 20;
 const MAX_ALLOWED_FREQUENCY = 20_000;
 
 function frequencyToSliderValue(frequency: number) {
-  return Math.log(frequency / MIN_ALLOWED_FREQUENCY) /
-    Math.log(MAX_ALLOWED_FREQUENCY / MIN_ALLOWED_FREQUENCY);
+  return (
+    Math.log(frequency / MIN_ALLOWED_FREQUENCY) /
+    Math.log(MAX_ALLOWED_FREQUENCY / MIN_ALLOWED_FREQUENCY)
+  );
 }
 
 function sliderValueToFrequency(value: number) {
@@ -222,9 +233,16 @@ export function Settings({
   onMinColorChange,
   maxColor,
   onMaxColorChange,
+  enabledNotes,
+  onEnabledNotesChange,
+  onHoverNote,
+  onStartPreviewNote,
+  onStopPreviewNote,
+  playNotesOnHover,
+  onPlayNotesOnHoverChange,
 }: SettingsProps) {
   return (
-    <div className="flex flex-col gap-4 rounded-md border bg-card p-4 text-card-foreground shadow-sm xl:flex-row xl:items-stretch">
+    <div className="flex flex-col gap-4 rounded-md border bg-card p-4 text-card-foreground shadow-sm xl:flex-row xl:flex-wrap xl:items-stretch">
       <div className="min-w-0 xl:flex-1">
         <NumberSetting
           id="time-range"
@@ -385,6 +403,70 @@ export function Settings({
           </div>
         </div>
       </div>
+      <Separator decorative className="h-px xl:basis-full" />
+      <section className="grid min-w-0 gap-2 xl:basis-full" aria-labelledby="toolbar-notes-label">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="grid gap-1">
+            <div id="toolbar-notes-label" className="text-sm leading-none font-medium">
+              Toolbar notes
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Choose the notes shown next to the music icon.
+            </p>
+          </div>
+          <Toggle
+            type="button"
+            size="sm"
+            variant="outline"
+            pressed={playNotesOnHover}
+            onPressedChange={onPlayNotesOnHoverChange}
+            className="mt-auto"
+          >
+            <MousePointer2
+              aria-hidden="true"
+              className={playNotesOnHover ? "fill-current text-primary" : "text-muted-foreground"}
+            />
+            Hover to play
+          </Toggle>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {NOTE_OPTIONS.map((note) => {
+            const selected = enabledNotes.includes(note.midi);
+            return (
+              <Button
+                key={note.midi}
+                type="button"
+                size="sm"
+                variant="outline"
+                aria-pressed={selected}
+                onPointerEnter={() => {
+                  onHoverNote(note.midi);
+                  onStartPreviewNote(note.midi);
+                }}
+                onPointerLeave={() => {
+                  onHoverNote(null);
+                  onStopPreviewNote(note.midi);
+                }}
+                onFocus={() => onHoverNote(note.midi)}
+                onBlur={() => {
+                  onHoverNote(null);
+                  onStopPreviewNote(note.midi);
+                }}
+                onClick={() =>
+                  onEnabledNotesChange(
+                    selected
+                      ? enabledNotes.filter((midi) => midi !== note.midi)
+                      : [...enabledNotes, note.midi].sort((a, b) => a - b),
+                  )
+                }
+                className={`w-14 ${selected ? noteButtonClass(note.color) : ""}`}
+              >
+                {note.name}
+              </Button>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }

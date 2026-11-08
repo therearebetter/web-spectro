@@ -2,6 +2,8 @@ import { Button } from "./components/ui/button";
 import { ChevronRightIcon, MoonIcon, MusicIcon, PauseIcon, PlayIcon, SunIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "./components/ui/separator";
+import type { NoteOption } from "./lib/notes";
+import { noteButtonClass } from "./lib/notes";
 
 type ToolbarProps = {
   isDarkMode: boolean;
@@ -12,6 +14,13 @@ type ToolbarProps = {
   microphoneError: string | null;
   isSettingsOpen: boolean;
   setSettingsOpen: (isOpen: boolean) => void;
+  notes: NoteOption[];
+  onHoverNote: (midi: number | null) => void;
+  onPlayNote: (midi: number) => void;
+  onStartNote: (midi: number, pressed?: boolean) => void;
+  onStopNote: (midi: number) => void;
+  pressedNoteMidi: number | null;
+  playNotesOnHover: boolean;
 };
 
 export function Toolbar({
@@ -23,6 +32,13 @@ export function Toolbar({
   microphoneError,
   isSettingsOpen,
   setSettingsOpen,
+  notes,
+  onHoverNote,
+  onPlayNote,
+  onStartNote,
+  onStopNote,
+  pressedNoteMidi,
+  playNotesOnHover,
 }: ToolbarProps) {
   return (
     <div className="flex shrink-0 items-center gap-4">
@@ -39,11 +55,62 @@ export function Toolbar({
       </Button>
       <Separator orientation="vertical" className="bg-muted-foreground w-px" />
       <MusicIcon className="text-muted-foreground" />
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {notes.map((note) => (
+          <Button
+            key={note.midi}
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label={`Play ${note.name}, ${note.frequency.toFixed(1)} hertz`}
+            onPointerEnter={() => {
+              onHoverNote(note.midi);
+              if (playNotesOnHover) onStartNote(note.midi, false);
+            }}
+            onPointerLeave={() => {
+              onHoverNote(null);
+              onStopNote(note.midi);
+            }}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              if (!playNotesOnHover) onStartNote(note.midi);
+            }}
+            onPointerUp={() => {
+              if (!playNotesOnHover) onStopNote(note.midi);
+            }}
+            onPointerCancel={() => onStopNote(note.midi)}
+            onFocus={() => {
+              onHoverNote(note.midi);
+              if (playNotesOnHover) onStartNote(note.midi, false);
+            }}
+            onBlur={() => {
+              onHoverNote(null);
+              onStopNote(note.midi);
+            }}
+            onClick={(event) => {
+              if (!playNotesOnHover && event.detail === 0) onPlayNote(note.midi);
+            }}
+            aria-pressed={pressedNoteMidi === note.midi}
+            data-pressed={pressedNoteMidi === note.midi}
+            className={cn(
+              noteButtonClass(note.color),
+              "active:scale-95 active:brightness-75 data-[pressed=true]:scale-95 data-[pressed=true]:brightness-75",
+            )}
+          >
+            {note.name}
+          </Button>
+        ))}
+      </div>
+      <div className="mx-auto border-x px-3 py-0.5 border-blue-400">
+        <div className="mx-auto border-x px-3 py-0.5 border-pink-400">
+          <div className="mx-auto border-x px-3 border-foreground">Web Spectro</div>
+        </div>
+      </div>
+
       <Button
         variant="outline"
         aria-expanded={isSettingsOpen}
         onClick={() => setSettingsOpen(!isSettingsOpen)}
-        className="ml-auto"
       >
         <ChevronRightIcon
           className={cn(
@@ -53,9 +120,7 @@ export function Toolbar({
         />
         Settings
       </Button>
-      <Button type="button" variant="outline" aria-pressed={isDarkMode} onClick={onToggleDarkMode}>
-        {isDarkMode ? <SunIcon /> : <MoonIcon />}
-      </Button>
+
       {microphoneError && (
         <p role="alert" className="text-sm text-destructive">
           {microphoneError} Allow microphone access, then press Play to retry.

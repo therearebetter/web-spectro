@@ -7,6 +7,7 @@ import { Toolbar } from "./Toolbar";
 import { Spectrogram } from "./Spectrogram";
 import { SpectrogramAxes } from "./SpectrogramAxes";
 import { Settings } from "./Settings";
+import { DEFAULT_NOTE_IDS, NOTE_OPTIONS, noteColor } from "./lib/notes";
 
 const SETTINGS_STORAGE_KEY = "spectrogram-settings";
 const DEFAULT_SETTINGS = {
@@ -16,6 +17,8 @@ const DEFAULT_SETTINGS = {
   maxFrequency: 1_000,
   minColor: -100,
   maxColor: -25,
+  enabledNotes: DEFAULT_NOTE_IDS,
+  playNotesOnHover: false,
 };
 const ALLOWED_FFT_SIZES = [2_048, 4_096, 8_192, 16_384, 32_768];
 
@@ -47,14 +50,24 @@ function loadSettings() {
     return {
       timeRange,
       yResolution,
-      minFrequency: hasValidFrequencyRange
-        ? saved.minFrequency
-        : DEFAULT_SETTINGS.minFrequency,
-      maxFrequency: hasValidFrequencyRange
-        ? saved.maxFrequency
-        : DEFAULT_SETTINGS.maxFrequency,
+      minFrequency: hasValidFrequencyRange ? saved.minFrequency : DEFAULT_SETTINGS.minFrequency,
+      maxFrequency: hasValidFrequencyRange ? saved.maxFrequency : DEFAULT_SETTINGS.maxFrequency,
       minColor: hasValidColorRange ? saved.minColor : DEFAULT_SETTINGS.minColor,
       maxColor: hasValidColorRange ? saved.maxColor : DEFAULT_SETTINGS.maxColor,
+      enabledNotes: Array.isArray(saved.enabledNotes)
+        ? [
+            ...new Set(
+              saved.enabledNotes.filter(
+                (midi: unknown): midi is number =>
+                  Number.isInteger(midi) && NOTE_OPTIONS.some((note) => note.midi === midi),
+              ),
+            ),
+          ]
+        : DEFAULT_SETTINGS.enabledNotes,
+      playNotesOnHover:
+        typeof saved.playNotesOnHover === "boolean"
+          ? saved.playNotesOnHover
+          : DEFAULT_SETTINGS.playNotesOnHover,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -76,7 +89,22 @@ export function App() {
   const [maxFrequency, setMaxFrequency] = useState(savedSettings.maxFrequency);
   const [minColor, setMinColor] = useState(savedSettings.minColor);
   const [maxColor, setMaxColor] = useState(savedSettings.maxColor);
+  const [enabledNotes, setEnabledNotes] = useState<number[]>(savedSettings.enabledNotes);
+  const [playNotesOnHover, setPlayNotesOnHover] = useState(savedSettings.playNotesOnHover);
+  const [hoveredNoteMidi, setHoveredNoteMidi] = useState<number | null>(null);
+  const [clickedNoteMidi, setClickedNoteMidi] = useState<number | null>(null);
+  const [pressedNoteMidi, setPressedNoteMidi] = useState<number | null>(null);
   const audioRef = useRef<{ stream: MediaStream; context: AudioContext } | null>(null);
+  const noteAudioContextRef = useRef<AudioContext | null>(null);
+  const noteVoiceRef = useRef<{
+    midi: number;
+    oscillator: OscillatorNode;
+    gain: GainNode;
+    sustained: boolean;
+  } | null>(null);
+  const noteTimerRef = useRef<number | null>(null);
+  const clickedNoteTimerRef = useRef<number | null>(null);
+  const noteStartSequenceRef = useRef(0);
   const yResolutionRef = useRef(yResolution);
   yResolutionRef.current = yResolution;
   const requestTokenRef = useRef(0);
@@ -110,9 +138,27 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(
       SETTINGS_STORAGE_KEY,
-      JSON.stringify({ timeRange, yResolution, minFrequency, maxFrequency, minColor, maxColor }),
+      JSON.stringify({
+        timeRange,
+        yResolution,
+        minFrequency,
+        maxFrequency,
+        minColor,
+        maxColor,
+        enabledNotes,
+        playNotesOnHover,
+      }),
     );
-  }, [maxColor, maxFrequency, minColor, minFrequency, timeRange, yResolution]);
+  }, [
+    enabledNotes,
+    maxColor,
+    maxFrequency,
+    minColor,
+    minFrequency,
+    playNotesOnHover,
+    timeRange,
+    yResolution,
+  ]);
 
   useEffect(() => {
     if (!analyser) return;
@@ -203,6 +249,115 @@ export function App() {
     });
   }, [analyser, requestMicrophone]);
 
+  const stopActiveNote = useCallback(() => {
+    const voice = noteVoiceRef.current;
+    if (!voice) return;
+    const now = voice.gain.context.currentTime;
+    voice.gain.gain.cancelScheduledValues(now);
+    voice.gain.gain.setTargetAtTime(0, now, 0.025);
+    try {
+      voice.oscillator.stop(now + 0.1);
+    } catch {
+      // The note may already have finished.
+    }
+    noteVoiceRef.current = null;
+    if (noteTimerRef.current !== null) window.clearTimeout(noteTimerRef.current);
+    noteTimerRef.current = null;
+  }, []);
+
+  const startNote = useCallback(
+    async (midi: number, sustained: boolean) => {
+      const sequence = ++noteStartSequenceRef.current;
+      stopActiveNote();
+      const context =
+        audioRef.current?.context ?? (noteAudioContextRef.current ??= new AudioContext());
+      try {
+        await context.resume();
+        if (sequence !== noteStartSequenceRef.current) return;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const now = context.currentTime;
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(440 * 2 ** ((midi - 69) / 12), now);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.12, now + 0.025);
+        if (!sustained) gain.gain.setTargetAtTime(0, now + 0.55, 0.08);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(now);
+        if (!sustained) oscillator.stop(now + 0.9);
+        noteVoiceRef.current = { midi, oscillator, gain, sustained };
+        if (!sustained) {
+          noteTimerRef.current = window.setTimeout(() => {
+            if (noteVoiceRef.current?.oscillator === oscillator) noteVoiceRef.current = null;
+            noteTimerRef.current = null;
+          }, 950);
+        }
+      } catch (error) {
+        console.error("Could not play note", error);
+      }
+    },
+    [stopActiveNote],
+  );
+
+  const hoverNote = useCallback((midi: number | null) => {
+    setHoveredNoteMidi(midi);
+  }, []);
+
+  const playNote = useCallback(
+    (midi: number) => {
+      setClickedNoteMidi(midi);
+      if (clickedNoteTimerRef.current !== null) window.clearTimeout(clickedNoteTimerRef.current);
+      void startNote(midi, false);
+      clickedNoteTimerRef.current = window.setTimeout(() => {
+        setClickedNoteMidi((current) => (current === midi ? null : current));
+        clickedNoteTimerRef.current = null;
+      }, 900);
+    },
+    [startNote],
+  );
+
+  const startSettingsNote = useCallback(
+    (midi: number) => {
+      void startNote(midi, true);
+    },
+    [startNote],
+  );
+
+  const startHeldNote = useCallback(
+    (midi: number, pressed = true) => {
+      if (pressed) setPressedNoteMidi(midi);
+      void startNote(midi, true);
+    },
+    [startNote],
+  );
+
+  const stopSustainedNote = useCallback(
+    (midi: number) => {
+      if (noteVoiceRef.current?.midi === midi && noteVoiceRef.current.sustained) {
+        stopActiveNote();
+      }
+    },
+    [stopActiveNote],
+  );
+
+  const stopHeldNote = useCallback(
+    (midi: number) => {
+      setPressedNoteMidi((current) => (current === midi ? null : current));
+      stopSustainedNote(midi);
+    },
+    [stopSustainedNote],
+  );
+
+  useEffect(
+    () => () => {
+      stopActiveNote();
+      if (clickedNoteTimerRef.current !== null) window.clearTimeout(clickedNoteTimerRef.current);
+      if (noteAudioContextRef.current) void noteAudioContextRef.current.close();
+    },
+    [stopActiveNote],
+  );
+
   const changeTimeRange = useCallback((seconds: number) => {
     setTimeRange(seconds);
     setPanOffsetPixels(0);
@@ -211,8 +366,7 @@ export function App() {
   return (
     <div
       className={cn(
-        "flex h-dvh w-full flex-col gap-4 overflow-hidden bg-background p-4 text-foreground",
-        isDarkMode && "dark",
+        "flex h-dvh w-full flex-col gap-4 overflow-hidden bg-background p-4 text-foreground dark",
       )}
     >
       <Toolbar
@@ -224,6 +378,13 @@ export function App() {
         microphoneError={microphoneError}
         isSettingsOpen={isSettingsOpen}
         setSettingsOpen={setSettingsOpen}
+        notes={NOTE_OPTIONS.filter((note) => enabledNotes.includes(note.midi))}
+        onHoverNote={hoverNote}
+        onPlayNote={playNote}
+        onStartNote={startHeldNote}
+        onStopNote={stopHeldNote}
+        pressedNoteMidi={pressedNoteMidi}
+        playNotesOnHover={playNotesOnHover}
       />
       <div
         aria-hidden={!isSettingsOpen}
@@ -247,6 +408,13 @@ export function App() {
             onMinColorChange={(value) => setMinColor(Math.min(value, maxColor - 1))}
             maxColor={maxColor}
             onMaxColorChange={(value) => setMaxColor(Math.max(value, minColor + 1))}
+            enabledNotes={enabledNotes}
+            onEnabledNotesChange={setEnabledNotes}
+            onHoverNote={hoverNote}
+            onStartPreviewNote={startSettingsNote}
+            onStopPreviewNote={stopSustainedNote}
+            playNotesOnHover={playNotesOnHover}
+            onPlayNotesOnHoverChange={setPlayNotesOnHover}
           />
         </div>
       </div>
@@ -261,6 +429,20 @@ export function App() {
         maxColor={maxColor}
         minFrequency={minFrequency}
         maxFrequency={maxFrequency}
+        highlightedNoteFrequency={(() => {
+          const midi = hoveredNoteMidi ?? clickedNoteMidi;
+          return midi === null
+            ? null
+            : (NOTE_OPTIONS.find((note) => note.midi === midi)?.frequency ?? null);
+        })()}
+        highlightedNoteColor={(() => {
+          const midi = hoveredNoteMidi ?? clickedNoteMidi;
+          const note =
+            midi === null ? undefined : NOTE_OPTIONS.find((option) => option.midi === midi);
+          return note ? noteColor(note.color, isDarkMode) : null;
+        })()}
+        selectedNotes={NOTE_OPTIONS.filter((note) => enabledNotes.includes(note.midi))}
+        isDarkMode={isDarkMode}
         panOffsetPixels={panOffsetPixels}
         onPanOffsetChange={setPanOffsetPixels}
         onStartPanning={() => setIsPlaying(false)}
