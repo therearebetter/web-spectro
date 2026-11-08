@@ -1,21 +1,30 @@
 import "./index.css";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Circle, Text } from "react-konva";
-import { Button } from "./components/ui/button";
-import { MoonIcon, PlayIcon, Settings, SunIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Toolbar } from "./Toolbar";
+import { Spectrogram } from "./Spectrogram";
+import { SpectrogramAxes } from "./SpectrogramAxes";
+import { Settings } from "./Settings";
+import { getFrequencyRange } from "@/lib/frequency-range";
 
 export function App() {
-  const [rectPosition, setRectPosition] = useState({ x: 20, y: 50 });
-  const [circlePosition, setCirclePosition] = useState({ x: 200, y: 100 });
-  const [isDarkMode, setIsDarkMode] = useState(
-    () => localStorage.getItem("theme") === "dark",
-  );
+  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem("theme") === "dark");
+  const [isSettingsOpen, setSettingsOpen] = useState(false);
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+  const [microphoneError, setMicrophoneError] = useState<string | null>(null);
+  const [isRequestingMicrophone, setIsRequestingMicrophone] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [frequencyOffsetOctaves, setFrequencyOffsetOctaves] = useState(0);
+  const audioRef = useRef<{ stream: MediaStream; context: AudioContext } | null>(null);
+  const requestTokenRef = useRef(0);
+  const requestPendingRef = useRef(false);
 
   const stageContainerRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  const sampleRate = analyser?.context.sampleRate ?? 48_000;
+  const frequencyRange = getFrequencyRange(sampleRate, frequencyOffsetOctaves);
 
   useLayoutEffect(() => {
     const container = stageContainerRef.current;
@@ -37,6 +46,84 @@ export function App() {
     localStorage.setItem("theme", isDarkMode ? "dark" : "light");
   }, [isDarkMode]);
 
+  const requestMicrophone = useCallback(async () => {
+    if (audioRef.current || requestPendingRef.current) return;
+    requestPendingRef.current = true;
+    setIsRequestingMicrophone(true);
+    setMicrophoneError(null);
+    const requestToken = ++requestTokenRef.current;
+    let stream: MediaStream | null = null;
+    let context: AudioContext | null = null;
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          autoGainControl: false,
+          echoCancellation: false,
+          noiseSuppression: false,
+        },
+      });
+      if (requestToken !== requestTokenRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      context = new AudioContext();
+      await context.resume();
+      if (requestToken !== requestTokenRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        void context.close();
+        return;
+      }
+
+      const source = context.createMediaStreamSource(stream);
+      const nextAnalyser = context.createAnalyser();
+      nextAnalyser.fftSize = 2048;
+      nextAnalyser.smoothingTimeConstant = 0.45;
+      nextAnalyser.minDecibels = -100;
+      nextAnalyser.maxDecibels = -25;
+      source.connect(nextAnalyser);
+
+      audioRef.current = { stream, context };
+      setAnalyser(nextAnalyser);
+      setIsPlaying(true);
+    } catch (error) {
+      stream?.getTracks().forEach((track) => track.stop());
+      if (context) void context.close();
+      if (requestToken === requestTokenRef.current) {
+        setMicrophoneError(
+          error instanceof Error ? error.message : "Could not access the microphone.",
+        );
+      }
+    } finally {
+      if (requestToken === requestTokenRef.current) {
+        requestPendingRef.current = false;
+        setIsRequestingMicrophone(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    // Deferring lets React StrictMode's development-only cleanup cancel its first mount.
+    const timeout = window.setTimeout(() => void requestMicrophone(), 0);
+    return () => {
+      window.clearTimeout(timeout);
+      requestTokenRef.current += 1;
+      requestPendingRef.current = false;
+      const audio = audioRef.current;
+      audioRef.current = null;
+      audio?.stream.getTracks().forEach((track) => track.stop());
+      if (audio) void audio.context.close();
+    };
+  }, [requestMicrophone]);
+
+  const togglePlayback = useCallback(() => {
+    if (!analyser) {
+      void requestMicrophone();
+      return;
+    }
+    setIsPlaying((playing) => !playing);
+  }, [analyser, requestMicrophone]);
+
   return (
     <div
       className={cn(
@@ -47,32 +134,47 @@ export function App() {
       <Toolbar
         isDarkMode={isDarkMode}
         onToggleDarkMode={() => setIsDarkMode((dark) => !dark)}
+        isPlaying={isPlaying}
+        isRequestingMicrophone={isRequestingMicrophone}
+        onTogglePlayback={togglePlayback}
+        microphoneError={microphoneError}
+        isSettingsOpen={isSettingsOpen}
+        setSettingsOpen={setSettingsOpen}
       />
-      <div ref={stageContainerRef} className="relative min-h-0 min-w-0 flex-1 rounded border">
-        <Stage width={stageSize.width} height={stageSize.height}>
-          <Layer>
-            <Text text="Try to drag shapes" fontSize={15} />
-            <Rect
-              x={rectPosition.x}
-              y={rectPosition.y}
-              width={100}
-              height={100}
-              fill="red"
-              shadowBlur={10}
-              draggable
-              onDragEnd={(e) => setRectPosition(e.target.position())}
-            />
-            <Circle
-              x={circlePosition.x}
-              y={circlePosition.y}
-              radius={50}
-              fill="green"
-              draggable
-              onDragEnd={(e) => setCirclePosition(e.target.position())}
-            />
-          </Layer>
-        </Stage>
+      <div
+        aria-hidden={!isSettingsOpen}
+        inert={!isSettingsOpen}
+        className={cn(
+          "grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
+          isSettingsOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <Settings />
+        </div>
       </div>
+      <SpectrogramAxes
+        plotRef={stageContainerRef}
+        width={stageSize.width}
+        height={stageSize.height}
+        sampleRate={sampleRate}
+        minFrequency={frequencyRange.min}
+        maxFrequency={frequencyRange.max}
+        frequencyOffsetOctaves={frequencyRange.offset}
+        onFrequencyOffsetChange={setFrequencyOffsetOctaves}
+      >
+        <Spectrogram
+          analyser={analyser}
+          isPlaying={isPlaying}
+          width={stageSize.width}
+          height={stageSize.height}
+          minFrequency={frequencyRange.min}
+          maxFrequency={frequencyRange.max}
+        />
+        <Stage className="absolute inset-0 z-20" width={stageSize.width} height={stageSize.height}>
+          <Layer />
+        </Stage>
+      </SpectrogramAxes>
     </div>
   );
 }
