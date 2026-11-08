@@ -8,6 +8,10 @@ type SpectrogramProps = {
   minFrequency: number;
   maxFrequency: number;
   panOffsetPixels: number;
+  timeRangeSeconds: number;
+  yResolution: number;
+  minColor: number;
+  maxColor: number;
 };
 
 const COLOR_STOPS = [
@@ -19,8 +23,6 @@ const COLOR_STOPS = [
   { at: 0.88, color: [255, 191, 0] },
   { at: 1, color: [255, 255, 170] },
 ];
-
-export const SPECTROGRAM_COLUMN_INTERVAL_MS = 33;
 
 function colorForLevel(level: number) {
   const upperIndex = COLOR_STOPS.findIndex((stop) => stop.at >= level);
@@ -41,11 +43,15 @@ export function Spectrogram({
   minFrequency,
   maxFrequency,
   panOffsetPixels,
+  timeRangeSeconds,
+  yResolution,
+  minColor,
+  maxColor,
 }: SpectrogramProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const writeXRef = useRef(0);
   const bufferWidth = width * 4;
   const liveViewOffset = bufferWidth - width;
+  const columnIntervalMs = (timeRangeSeconds * 1_000) / Math.max(width, 1);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -53,74 +59,99 @@ export function Spectrogram({
 
     canvas.width = bufferWidth;
     canvas.height = height;
-    writeXRef.current = liveViewOffset;
     const context = canvas.getContext("2d");
     if (!context) return;
 
     context.fillStyle = "black";
     context.fillRect(0, 0, bufferWidth, height);
-  }, [bufferWidth, height, liveViewOffset, width]);
+  }, [bufferWidth, columnIntervalMs, height, liveViewOffset, width]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !analyser || !isPlaying || width < 1 || height < 1) return;
+    analyser.fftSize = yResolution;
     const context = canvas.getContext("2d");
     if (!context) return;
 
     const frequencyData = new Float32Array(analyser.frequencyBinCount);
-    const column = context.createImageData(1, height);
     const sampleRate = analyser.context.sampleRate;
     const logRange = Math.log(maxFrequency / minFrequency);
-    const pixels = column.data;
     let animationFrame = 0;
-    let lastDraw = 0;
-    let writeX = writeXRef.current;
-
+    let lastDraw: number | null = null;
+    let elapsedSinceDraw = 0;
     const draw = (timestamp: number) => {
       animationFrame = requestAnimationFrame(draw);
-      if (timestamp - lastDraw < SPECTROGRAM_COLUMN_INTERVAL_MS) return;
+      if (lastDraw === null) {
+        lastDraw = timestamp;
+        return;
+      }
+      elapsedSinceDraw += timestamp - lastDraw;
       lastDraw = timestamp;
+      const columnsToAdvance = Math.floor(elapsedSinceDraw / columnIntervalMs);
+      if (columnsToAdvance < 1) return;
+      elapsedSinceDraw -= columnsToAdvance * columnIntervalMs;
 
       analyser.getFloatFrequencyData(frequencyData);
-      if (writeX >= bufferWidth) {
-        const retainedWidth = bufferWidth - width;
-        context.drawImage(canvas, width, 0, retainedWidth, height, 0, 0, retainedWidth, height);
-        context.clearRect(retainedWidth, 0, width, height);
-        writeX = retainedWidth;
-        writeXRef.current = writeX;
+      const advance = Math.min(columnsToAdvance, bufferWidth);
+      if (advance < bufferWidth) {
+        context.drawImage(
+          canvas,
+          advance,
+          0,
+          bufferWidth - advance,
+          height,
+          0,
+          0,
+          bufferWidth - advance,
+          height,
+        );
       }
+      context.clearRect(bufferWidth - advance, 0, advance, height);
 
+      const columns = context.createImageData(advance, height);
       for (let y = 0; y < height; y += 1) {
         const verticalPosition = 1 - y / Math.max(height - 1, 1);
         const frequency = minFrequency * Math.exp(verticalPosition * logRange);
-        const bin = Math.max(
-          0,
-          Math.min(
-            Math.round((frequency / sampleRate) * analyser.fftSize),
-            frequencyData.length - 1,
-          ),
-        );
-        const db = frequencyData[bin] ?? analyser.minDecibels;
+        const binPosition = (frequency / sampleRate) * analyser.fftSize;
+        const lowerBin = Math.max(0, Math.min(Math.floor(binPosition), frequencyData.length - 1));
+        const upperBin = Math.min(lowerBin + 1, frequencyData.length - 1);
+        const binFraction = binPosition - lowerBin;
+        const lowerDb = frequencyData[lowerBin] ?? analyser.minDecibels;
+        const upperDb = frequencyData[upperBin] ?? lowerDb;
+        const db = lowerDb + (upperDb - lowerDb) * binFraction;
         const normalized = Math.max(
           0,
-          Math.min(1, (db - analyser.minDecibels) / (analyser.maxDecibels - analyser.minDecibels)),
+          Math.min(1, (db - minColor) / (maxColor - minColor)),
         );
         const [red, green, blue] = colorForLevel(normalized ** 1.35);
-        const offset = y * 4;
-        pixels[offset] = red!;
-        pixels[offset + 1] = green!;
-        pixels[offset + 2] = blue!;
-        pixels[offset + 3] = 255;
+        for (let x = 0; x < advance; x += 1) {
+          const offset = (y * advance + x) * 4;
+          columns.data[offset] = red!;
+          columns.data[offset + 1] = green!;
+          columns.data[offset + 2] = blue!;
+          columns.data[offset + 3] = 255;
+        }
       }
 
-      context.putImageData(column, writeX, 0);
-      writeX += 1;
-      writeXRef.current = writeX;
+      context.putImageData(columns, bufferWidth - advance, 0);
     };
 
     animationFrame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animationFrame);
-  }, [analyser, bufferWidth, height, isPlaying, liveViewOffset, maxFrequency, minFrequency, width]);
+  }, [
+    analyser,
+    bufferWidth,
+    columnIntervalMs,
+    height,
+    isPlaying,
+    liveViewOffset,
+    maxColor,
+    maxFrequency,
+    minColor,
+    minFrequency,
+    yResolution,
+    width,
+  ]);
 
   return (
     <canvas

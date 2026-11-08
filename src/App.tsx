@@ -16,7 +16,13 @@ export function App() {
   const [isRequestingMicrophone, setIsRequestingMicrophone] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
   const [panOffsetPixels, setPanOffsetPixels] = useState(0);
+  const [timeRange, setTimeRange] = useState(8);
+  const [yResolution, setYResolution] = useState(8_192);
+  const [minColor, setMinColor] = useState(-100);
+  const [maxColor, setMaxColor] = useState(-25);
   const audioRef = useRef<{ stream: MediaStream; context: AudioContext } | null>(null);
+  const yResolutionRef = useRef(yResolution);
+  yResolutionRef.current = yResolution;
   const requestTokenRef = useRef(0);
   const requestPendingRef = useRef(false);
 
@@ -44,6 +50,13 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("theme", isDarkMode ? "dark" : "light");
   }, [isDarkMode]);
+
+  useEffect(() => {
+    if (!analyser) return;
+    analyser.fftSize = yResolution;
+    analyser.minDecibels = minColor;
+    analyser.maxDecibels = maxColor;
+  }, [analyser, maxColor, minColor, yResolution]);
 
   const requestMicrophone = useCallback(async () => {
     if (audioRef.current || requestPendingRef.current) return;
@@ -76,7 +89,7 @@ export function App() {
 
       const source = context.createMediaStreamSource(stream);
       const nextAnalyser = context.createAnalyser();
-      nextAnalyser.fftSize = 2048;
+      nextAnalyser.fftSize = yResolutionRef.current;
       nextAnalyser.smoothingTimeConstant = 0.45;
       nextAnalyser.minDecibels = -100;
       nextAnalyser.maxDecibels = -25;
@@ -127,6 +140,11 @@ export function App() {
     });
   }, [analyser, requestMicrophone]);
 
+  const changeTimeRange = useCallback((seconds: number) => {
+    setTimeRange(seconds);
+    setPanOffsetPixels(0);
+  }, []);
+
   return (
     <div
       className={cn(
@@ -153,13 +171,25 @@ export function App() {
         )}
       >
         <div className="min-h-0 overflow-hidden">
-          <Settings />
+          <Settings
+            timeRange={timeRange}
+            onTimeRangeChange={changeTimeRange}
+            yResolution={yResolution}
+            onYResolutionChange={setYResolution}
+            minColor={minColor}
+            onMinColorChange={(value) => setMinColor(Math.min(value, maxColor - 1))}
+            maxColor={maxColor}
+            onMaxColorChange={(value) => setMaxColor(Math.max(value, minColor + 1))}
+          />
         </div>
       </div>
       <SpectrogramAxes
         plotRef={stageContainerRef}
         width={stageSize.width}
         height={stageSize.height}
+        columnIntervalMs={(timeRange * 1_000) / Math.max(stageSize.width, 1)}
+        timeRangeSeconds={timeRange}
+        onTimeRangeChange={changeTimeRange}
         panOffsetPixels={panOffsetPixels}
         onPanOffsetChange={setPanOffsetPixels}
         onStartPanning={() => setIsPlaying(false)}
@@ -172,6 +202,10 @@ export function App() {
           minFrequency={60}
           maxFrequency={1_000}
           panOffsetPixels={panOffsetPixels}
+          timeRangeSeconds={timeRange}
+          yResolution={yResolution}
+          minColor={minColor}
+          maxColor={maxColor}
         />
         <Stage
           className="absolute inset-0 z-20"

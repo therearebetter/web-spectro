@@ -1,15 +1,18 @@
 import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
 import { useRef } from "react";
-import { SPECTROGRAM_COLUMN_INTERVAL_MS } from "./Spectrogram";
 
 const TIME_TICK_POSITIONS = [0, 1 / 3, 2 / 3, 1];
 const MIN_FREQUENCY = 60;
 const MAX_FREQUENCY = 1_000;
-const FREQUENCY_TICKS = [60, 100, 200, 400, 600, 800, 1_000];
+const FREQUENCY_LABELS = [60, 70, 80, 90, 100, 125, 150, 200, 250, 300, 400, 500, 600, 800, 1_000];
+const GRID_FREQUENCIES = [60, 100, 200, 400, 600, 800, 1_000];
 
 type SpectrogramAxesProps = {
   width: number;
   height: number;
+  columnIntervalMs: number;
+  timeRangeSeconds: number;
+  onTimeRangeChange: (seconds: number) => void;
   panOffsetPixels: number;
   onPanOffsetChange: (offset: number) => void;
   onStartPanning: () => void;
@@ -25,6 +28,9 @@ function formatTime(seconds: number) {
 export function SpectrogramAxes({
   width,
   height,
+  columnIntervalMs,
+  timeRangeSeconds,
+  onTimeRangeChange,
   panOffsetPixels,
   onPanOffsetChange,
   onStartPanning,
@@ -69,7 +75,7 @@ export function SpectrogramAxes({
           Frequency (Hz)
         </text>
         <line x1="108" y1="0" x2="108" y2={height} className="stroke-border" />
-        {FREQUENCY_TICKS.map((frequency) => {
+        {FREQUENCY_LABELS.map((frequency) => {
           const y = height * (1 - Math.log(frequency / MIN_FREQUENCY) / logRange);
           const labelY = Math.max(9, Math.min(height - 2, y + 3));
 
@@ -100,7 +106,7 @@ export function SpectrogramAxes({
           viewBox={`0 0 ${width} ${height}`}
           preserveAspectRatio="none"
         >
-          {FREQUENCY_TICKS.map((frequency) => {
+          {GRID_FREQUENCIES.map((frequency) => {
             const y = height * (1 - Math.log(frequency / MIN_FREQUENCY) / logRange);
             return (
               <line
@@ -121,8 +127,16 @@ export function SpectrogramAxes({
 
       <svg
         role="group"
-        aria-label="Time axis. Drag left or right to pan through captured audio. Panning pauses the live spectrogram."
+        aria-label="Time axis. Drag left or right to pan through captured audio. Scroll to change the displayed time range."
         tabIndex={0}
+        onWheel={(event) => {
+          event.preventDefault();
+          const nextRange = Math.max(
+            2,
+            Math.min(30, timeRangeSeconds * Math.exp(event.deltaY * 0.001)),
+          );
+          onTimeRangeChange(Math.round(nextRange * 10) / 10);
+        }}
         onPointerDown={(event) => {
           dragRef.current = {
             pointerId: event.pointerId,
@@ -159,7 +173,7 @@ export function SpectrogramAxes({
         {TIME_TICK_POSITIONS.map((position) => {
           const x = width * position;
           const ageSeconds =
-            ((panOffsetPixels + (width - x)) * SPECTROGRAM_COLUMN_INTERVAL_MS) / 1_000;
+            ((panOffsetPixels + (width - x)) * columnIntervalMs) / 1_000;
           const anchor = position === 0 ? "start" : position === 1 ? "end" : "middle";
 
           return (
