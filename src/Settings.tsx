@@ -1,6 +1,10 @@
+import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Slider } from "./components/ui/slider";
+import { Separator } from "./components/ui/separator";
 
 type SettingsProps = {
   timeRange: number;
@@ -15,9 +19,136 @@ type SettingsProps = {
 
 const FFT_SIZES = [2_048, 4_096, 8_192, 16_384, 32_768];
 
+function NumberInput({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  normalize = (number: number) => number,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  normalize?: (number: number) => number;
+  onChange: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => setDraft(String(value)), [value]);
+
+  const normalizeDraft = (rawValue: string) => {
+    if (rawValue.trim() === "" || rawValue === "-") return undefined;
+    const entered = Number(rawValue);
+    if (!Number.isFinite(entered)) return undefined;
+    return normalize(Math.max(min, Math.min(max, Math.round(entered))));
+  };
+  const allowNegative = min < 0;
+  const validInteger = allowNegative ? /^-?\d*$/ : /^\d*$/;
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      <Input
+        id={id}
+        aria-label={label}
+        type="text"
+        inputMode={allowNegative ? "text" : "numeric"}
+        pattern={allowNegative ? "-?[0-9]*" : "[0-9]*"}
+        value={draft}
+        onChange={(event) => {
+          const nextDraft = event.target.value;
+          if (validInteger.test(nextDraft)) setDraft(nextDraft);
+        }}
+        onPaste={(event) => {
+          if (!validInteger.test(event.clipboardData.getData("text"))) event.preventDefault();
+        }}
+        onBlur={() => {
+          const next = normalizeDraft(draft);
+          if (next === undefined) {
+            setDraft(String(value));
+            return;
+          }
+          onChange(next);
+          setDraft(String(next));
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.currentTarget.blur();
+            return;
+          }
+          if (
+            event.ctrlKey ||
+            event.metaKey ||
+            event.altKey ||
+            /^[0-9]$/.test(event.key) ||
+            ["Backspace", "Delete", "Tab", "ArrowLeft", "ArrowRight", "Home", "End"].includes(
+              event.key,
+            )
+          ) {
+            return;
+          }
+          if (
+            allowNegative &&
+            event.key === "-" &&
+            !draft.startsWith("-")
+          ) {
+            return;
+          }
+          event.preventDefault();
+        }}
+        className="h-8 appearance-none px-2 pr-7 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+      <div className="absolute inset-y-0 right-1 flex flex-col justify-center">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`Increase ${label}`}
+          disabled={value >= max}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            const next = normalizeDraft(String(Math.min(max, value + step)));
+            if (next !== undefined) {
+              onChange(next);
+              setDraft(String(next));
+            }
+          }}
+          className="h-3.5 w-5 rounded-sm p-0 [&_svg]:size-3"
+        >
+          <ChevronUp />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`Decrease ${label}`}
+          disabled={value <= min}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            const next = normalizeDraft(String(Math.max(min, value - step)));
+            if (next !== undefined) {
+              onChange(next);
+              setDraft(String(next));
+            }
+          }}
+          className="h-3.5 w-5 rounded-sm p-0 [&_svg]:size-3"
+        >
+          <ChevronDown />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function NumberSetting({
   id,
   label,
+  description,
   value,
   min,
   max,
@@ -26,6 +157,7 @@ function NumberSetting({
 }: {
   id: string;
   label: string;
+  description: string;
   value: number;
   min: number;
   max: number;
@@ -34,8 +166,11 @@ function NumberSetting({
 }) {
   return (
     <div className="grid gap-2">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="flex items-center gap-3">
+      <div className="grid gap-1">
+        <Label htmlFor={id}>{label}</Label>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <div className="grid gap-2">
         <Slider
           aria-label={label}
           min={min}
@@ -45,19 +180,14 @@ function NumberSetting({
           onValueChange={([next]) => next !== undefined && onChange(next)}
           className="flex-1"
         />
-        <div className="flex w-28 items-center gap-2">
-          <Input
+        <div className="ml-auto flex w-40 items-center gap-2">
+          <NumberInput
             id={id}
-            type="number"
+            label={label}
+            value={value}
             min={min}
             max={max}
-            step={1}
-            value={value}
-            onChange={(event) => {
-              const next = Number(event.target.value);
-              if (Number.isFinite(next)) onChange(Math.max(min, Math.min(max, next)));
-            }}
-            className="h-8"
+            onChange={onChange}
           />
           <span className="text-xs text-muted-foreground">{unit}</span>
         </div>
@@ -77,19 +207,33 @@ export function Settings({
   onMaxColorChange,
 }: SettingsProps) {
   return (
-    <div className="grid gap-4 rounded-md border bg-card p-4 text-card-foreground shadow-sm sm:grid-cols-3">
-      <NumberSetting
-        id="time-range"
-        label="Time range"
-        value={timeRange}
-        min={2}
-        max={30}
-        unit="seconds"
-        onChange={onTimeRangeChange}
+    <div className="flex flex-col gap-4 rounded-md border bg-card p-4 text-card-foreground shadow-sm sm:flex-row sm:items-stretch">
+      <div className="min-w-0 flex-1">
+        <NumberSetting
+          id="time-range"
+          label="Time range"
+          description="Seconds shown across the time axis."
+          value={timeRange}
+          min={2}
+          max={30}
+          unit="seconds"
+          onChange={onTimeRangeChange}
+        />
+      </div>
+      <Separator
+        decorative
+        orientation="vertical"
+        className="hidden min-h-24 self-stretch bg-muted-foreground/40 sm:block"
       />
-      <div className="grid gap-2">
-        <Label htmlFor="y-resolution">Y-axis resolution</Label>
-        <div className="flex items-center gap-3">
+      <Separator decorative className="h-px bg-muted-foreground/40 sm:hidden" />
+      <div className="min-w-0 flex-1 grid gap-2">
+        <div className="grid gap-1">
+          <Label htmlFor="y-resolution">Y-axis resolution</Label>
+          <p className="text-xs text-muted-foreground">
+            Higher values show finer frequency detail.
+          </p>
+        </div>
+        <div className="grid gap-2">
           <Slider
             aria-label="Y-axis resolution"
             min={0}
@@ -101,47 +245,77 @@ export function Settings({
             }}
             className="flex-1"
           />
-          <div className="flex w-28 items-center gap-2">
-            <Input
+          <div className="ml-auto flex w-32 items-center gap-2">
+            <NumberInput
               id="y-resolution"
-              type="number"
-              min={FFT_SIZES[0]}
-              max={FFT_SIZES[FFT_SIZES.length - 1]}
-              step={1_024}
+              label="Y-axis resolution"
               value={yResolution}
-              onChange={(event) => {
-                const entered = Number(event.target.value);
-                if (!Number.isFinite(entered)) return;
-                const nearest = FFT_SIZES.reduce((best, size) =>
+              min={FFT_SIZES[0]!}
+              max={FFT_SIZES[FFT_SIZES.length - 1]!}
+              step={1_024}
+              normalize={(entered) =>
+                FFT_SIZES.reduce((best, size) =>
                   Math.abs(size - entered) < Math.abs(best - entered) ? size : best,
-                );
-                onYResolutionChange(nearest);
-              }}
-              className="h-8"
+                )
+              }
+              onChange={onYResolutionChange}
             />
             <span className="text-xs text-muted-foreground">FFT</span>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">Higher values show finer frequency detail.</p>
       </div>
-      <NumberSetting
-        id="min-color"
-        label="Minimum color level"
-        value={minColor}
-        min={-120}
-        max={-1}
-        unit="dB"
-        onChange={onMinColorChange}
+      <Separator
+        decorative
+        orientation="vertical"
+        className="hidden min-h-24 self-stretch bg-muted-foreground/40 sm:block"
       />
-      <NumberSetting
-        id="max-color"
-        label="Maximum color level"
-        value={maxColor}
-        min={-119}
-        max={0}
-        unit="dB"
-        onChange={onMaxColorChange}
-      />
+      <Separator decorative className="h-px bg-muted-foreground/40 sm:hidden" />
+      <div className="min-w-0 flex-1 grid gap-2">
+        <div className="grid gap-1">
+          <div className="text-sm leading-none font-medium">Color level</div>
+          <p className="text-xs text-muted-foreground">
+            Set the dB range mapped to the color scale.
+          </p>
+        </div>
+        <div className="grid gap-2">
+          <Slider
+            aria-label="Color level range"
+            min={-120}
+            max={0}
+            step={1}
+            minStepsBetweenThumbs={1}
+            value={[minColor, maxColor]}
+            onValueChange={([minimum, maximum]) => {
+              if (minimum !== undefined) onMinColorChange(minimum);
+              if (maximum !== undefined) onMaxColorChange(maximum);
+            }}
+          />
+          <div className="flex items-center justify-between">
+            <div className="flex w-28 items-center gap-1">
+              <NumberInput
+                id="min-color"
+                label="Minimum color level"
+                value={minColor}
+                min={-120}
+                max={-1}
+                onChange={onMinColorChange}
+              />
+              <span className="text-xs text-muted-foreground">dB</span>
+            </div>
+            <div className="flex w-28 items-center gap-1">
+              <NumberInput
+                id="max-color"
+                label="Maximum color level"
+                value={maxColor}
+                min={-119}
+                max={0}
+                onChange={onMaxColorChange}
+              />
+              <span className="text-xs text-muted-foreground">dB</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

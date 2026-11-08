@@ -13,6 +13,8 @@ type SpectrogramAxesProps = {
   columnIntervalMs: number;
   timeRangeSeconds: number;
   onTimeRangeChange: (seconds: number) => void;
+  minColor: number;
+  maxColor: number;
   panOffsetPixels: number;
   onPanOffsetChange: (offset: number) => void;
   onStartPanning: () => void;
@@ -31,6 +33,8 @@ export function SpectrogramAxes({
   columnIntervalMs,
   timeRangeSeconds,
   onTimeRangeChange,
+  minColor,
+  maxColor,
   panOffsetPixels,
   onPanOffsetChange,
   onStartPanning,
@@ -38,6 +42,7 @@ export function SpectrogramAxes({
   children,
 }: SpectrogramAxesProps) {
   const logRange = Math.log(MAX_FREQUENCY / MIN_FREQUENCY);
+  const decibelTickCount = Math.min(5, Math.floor(maxColor - minColor) + 1);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -58,7 +63,7 @@ export function SpectrogramAxes({
   };
 
   return (
-    <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[110px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_32px] overflow-hidden">
+    <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[110px_minmax(0,1fr)_90px] grid-rows-[minmax(0,1fr)_32px] overflow-hidden">
       <svg
         aria-hidden="true"
         className="row-start-1 h-full w-full select-none text-muted-foreground"
@@ -81,13 +86,7 @@ export function SpectrogramAxes({
 
           return (
             <g key={frequency}>
-              <line
-                x1="103"
-                y1={y}
-                x2="108"
-                y2={y}
-                className="stroke-muted-foreground/60"
-              />
+              <line x1="103" y1={y} x2="108" y2={y} className="stroke-muted-foreground/60" />
               <text x="100" y={labelY} textAnchor="end" className="fill-current text-[10px]">
                 {frequency}
               </text>
@@ -98,7 +97,7 @@ export function SpectrogramAxes({
 
       <div
         ref={plotRef}
-        className="relative col-start-2 row-start-1 min-h-0 min-w-0 overflow-hidden rounded-t-sm border-t border-r border-border"
+        className="relative col-start-2 row-start-1 min-h-0 min-w-0 overflow-hidden"
       >
         <svg
           aria-hidden="true"
@@ -124,6 +123,52 @@ export function SpectrogramAxes({
         </svg>
         {children}
       </div>
+
+      <svg
+        aria-hidden="true"
+        className="col-start-3 row-start-1 h-full w-full select-none text-muted-foreground"
+        viewBox={`0 0 90 ${height}`}
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <linearGradient id="decibel-scale" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="rgb(0, 0, 0)" />
+            <stop offset="12%" stopColor="rgb(9, 8, 35)" />
+            <stop offset="34%" stopColor="rgb(61, 31, 170)" />
+            <stop offset="56%" stopColor="rgb(174, 35, 132)" />
+            <stop offset="74%" stopColor="rgb(247, 71, 24)" />
+            <stop offset="88%" stopColor="rgb(255, 191, 0)" />
+            <stop offset="100%" stopColor="rgb(255, 255, 170)" />
+          </linearGradient>
+        </defs>
+        <text
+          x="78"
+          y={height / 2}
+          textAnchor="middle"
+          transform={`rotate(90 78 ${height / 2})`}
+          className="fill-current text-[10px]"
+        >
+          Level (dB)
+        </text>
+        <rect x="6" y="0" width="12" height={height} fill="url(#decibel-scale)" />
+        {Array.from({ length: decibelTickCount }, (_, index) => {
+          const position = index / Math.max(decibelTickCount - 1, 1);
+          const y = height * (1 - position);
+          const value = Math.round(minColor + (maxColor - minColor) * position);
+          return (
+            <g key={`${index}-${value}`}>
+              <line x1="18" y1={y} x2="22" y2={y} className="stroke-muted-foreground/60" />
+              <text
+                x="25"
+                y={Math.max(9, Math.min(height - 2, y + 3))}
+                className="fill-current text-[10px]"
+              >
+                {value}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
 
       <svg
         role="group"
@@ -172,8 +217,7 @@ export function SpectrogramAxes({
         </text>
         {TIME_TICK_POSITIONS.map((position) => {
           const x = width * position;
-          const ageSeconds =
-            ((panOffsetPixels + (width - x)) * columnIntervalMs) / 1_000;
+          const ageSeconds = ((panOffsetPixels + (width - x)) * columnIntervalMs) / 1_000;
           const anchor = position === 0 ? "start" : position === 1 ? "end" : "middle";
 
           return (

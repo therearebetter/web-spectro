@@ -8,18 +8,58 @@ import { Spectrogram } from "./Spectrogram";
 import { SpectrogramAxes } from "./SpectrogramAxes";
 import { Settings } from "./Settings";
 
+const SETTINGS_STORAGE_KEY = "spectrogram-settings";
+const DEFAULT_SETTINGS = {
+  timeRange: 8,
+  yResolution: 8_192,
+  minColor: -100,
+  maxColor: -25,
+};
+const ALLOWED_FFT_SIZES = [2_048, 4_096, 8_192, 16_384, 32_768];
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) ?? "null");
+    if (!saved || typeof saved !== "object") return DEFAULT_SETTINGS;
+
+    const timeRange =
+      typeof saved.timeRange === "number" && saved.timeRange >= 2 && saved.timeRange <= 30
+        ? saved.timeRange
+        : DEFAULT_SETTINGS.timeRange;
+    const yResolution = ALLOWED_FFT_SIZES.includes(saved.yResolution)
+      ? saved.yResolution
+      : DEFAULT_SETTINGS.yResolution;
+    const hasValidColorRange =
+      Number.isInteger(saved.minColor) &&
+      Number.isInteger(saved.maxColor) &&
+      saved.minColor >= -120 &&
+      saved.maxColor <= 0 &&
+      saved.minColor < saved.maxColor;
+
+    return {
+      timeRange,
+      yResolution,
+      minColor: hasValidColorRange ? saved.minColor : DEFAULT_SETTINGS.minColor,
+      maxColor: hasValidColorRange ? saved.maxColor : DEFAULT_SETTINGS.maxColor,
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
 export function App() {
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem("theme") === "dark");
+  const [savedSettings] = useState(loadSettings);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [microphoneError, setMicrophoneError] = useState<string | null>(null);
   const [isRequestingMicrophone, setIsRequestingMicrophone] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
   const [panOffsetPixels, setPanOffsetPixels] = useState(0);
-  const [timeRange, setTimeRange] = useState(8);
-  const [yResolution, setYResolution] = useState(8_192);
-  const [minColor, setMinColor] = useState(-100);
-  const [maxColor, setMaxColor] = useState(-25);
+  const [timeRange, setTimeRange] = useState(savedSettings.timeRange);
+  const [yResolution, setYResolution] = useState(savedSettings.yResolution);
+  const [minColor, setMinColor] = useState(savedSettings.minColor);
+  const [maxColor, setMaxColor] = useState(savedSettings.maxColor);
   const audioRef = useRef<{ stream: MediaStream; context: AudioContext } | null>(null);
   const yResolutionRef = useRef(yResolution);
   yResolutionRef.current = yResolution;
@@ -50,6 +90,13 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("theme", isDarkMode ? "dark" : "light");
   }, [isDarkMode]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({ timeRange, yResolution, minColor, maxColor }),
+    );
+  }, [maxColor, minColor, timeRange, yResolution]);
 
   useEffect(() => {
     if (!analyser) return;
@@ -190,6 +237,8 @@ export function App() {
         columnIntervalMs={(timeRange * 1_000) / Math.max(stageSize.width, 1)}
         timeRangeSeconds={timeRange}
         onTimeRangeChange={changeTimeRange}
+        minColor={minColor}
+        maxColor={maxColor}
         panOffsetPixels={panOffsetPixels}
         onPanOffsetChange={setPanOffsetPixels}
         onStartPanning={() => setIsPlaying(false)}
