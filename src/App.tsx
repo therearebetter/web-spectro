@@ -7,7 +7,6 @@ import { Toolbar } from "./Toolbar";
 import { Spectrogram } from "./Spectrogram";
 import { SpectrogramAxes } from "./SpectrogramAxes";
 import { Settings } from "./Settings";
-import { getFrequencyRange } from "@/lib/frequency-range";
 
 export function App() {
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem("theme") === "dark");
@@ -16,15 +15,13 @@ export function App() {
   const [microphoneError, setMicrophoneError] = useState<string | null>(null);
   const [isRequestingMicrophone, setIsRequestingMicrophone] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [frequencyOffsetOctaves, setFrequencyOffsetOctaves] = useState(0);
+  const [panOffsetPixels, setPanOffsetPixels] = useState(0);
   const audioRef = useRef<{ stream: MediaStream; context: AudioContext } | null>(null);
   const requestTokenRef = useRef(0);
   const requestPendingRef = useRef(false);
 
   const stageContainerRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
-  const sampleRate = analyser?.context.sampleRate ?? 48_000;
-  const frequencyRange = getFrequencyRange(sampleRate, frequencyOffsetOctaves);
 
   useLayoutEffect(() => {
     const container = stageContainerRef.current;
@@ -32,10 +29,12 @@ export function App() {
 
     const observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
-      setStageSize({
+        const nextSize = {
         width: Math.floor(entry.contentRect.width),
         height: Math.floor(entry.contentRect.height),
-      });
+        };
+        setStageSize(nextSize);
+        setPanOffsetPixels((offset) => Math.min(offset, nextSize.width * 3));
     });
 
     observer.observe(container);
@@ -121,7 +120,11 @@ export function App() {
       void requestMicrophone();
       return;
     }
-    setIsPlaying((playing) => !playing);
+    setIsPlaying((playing) => {
+      const nextPlaying = !playing;
+      if (nextPlaying) setPanOffsetPixels(0);
+      return nextPlaying;
+    });
   }, [analyser, requestMicrophone]);
 
   return (
@@ -157,21 +160,25 @@ export function App() {
         plotRef={stageContainerRef}
         width={stageSize.width}
         height={stageSize.height}
-        sampleRate={sampleRate}
-        minFrequency={frequencyRange.min}
-        maxFrequency={frequencyRange.max}
-        frequencyOffsetOctaves={frequencyRange.offset}
-        onFrequencyOffsetChange={setFrequencyOffsetOctaves}
+        panOffsetPixels={panOffsetPixels}
+        onPanOffsetChange={setPanOffsetPixels}
+        onStartPanning={() => setIsPlaying(false)}
       >
         <Spectrogram
           analyser={analyser}
           isPlaying={isPlaying}
           width={stageSize.width}
           height={stageSize.height}
-          minFrequency={frequencyRange.min}
-          maxFrequency={frequencyRange.max}
+          minFrequency={60}
+          maxFrequency={1_000}
+          panOffsetPixels={panOffsetPixels}
         />
-        <Stage className="absolute inset-0 z-20" width={stageSize.width} height={stageSize.height}>
+        <Stage
+          className="absolute inset-0 z-20"
+          width={stageSize.width}
+          height={stageSize.height}
+          style={{ transform: `translateX(${panOffsetPixels}px)` }}
+        >
           <Layer />
         </Stage>
       </SpectrogramAxes>

@@ -7,6 +7,7 @@ type SpectrogramProps = {
   height: number;
   minFrequency: number;
   maxFrequency: number;
+  panOffsetPixels: number;
 };
 
 const COLOR_STOPS = [
@@ -39,21 +40,26 @@ export function Spectrogram({
   height,
   minFrequency,
   maxFrequency,
+  panOffsetPixels,
 }: SpectrogramProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const writeXRef = useRef(0);
+  const bufferWidth = width * 4;
+  const liveViewOffset = bufferWidth - width;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || width < 1 || height < 1) return;
 
-    canvas.width = width;
+    canvas.width = bufferWidth;
     canvas.height = height;
+    writeXRef.current = liveViewOffset;
     const context = canvas.getContext("2d");
     if (!context) return;
 
     context.fillStyle = "black";
-    context.fillRect(0, 0, width, height);
-  }, [height, width]);
+    context.fillRect(0, 0, bufferWidth, height);
+  }, [bufferWidth, height, liveViewOffset, width]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -68,6 +74,7 @@ export function Spectrogram({
     const pixels = column.data;
     let animationFrame = 0;
     let lastDraw = 0;
+    let writeX = writeXRef.current;
 
     const draw = (timestamp: number) => {
       animationFrame = requestAnimationFrame(draw);
@@ -75,8 +82,12 @@ export function Spectrogram({
       lastDraw = timestamp;
 
       analyser.getFloatFrequencyData(frequencyData);
-      if (width > 1) {
-        context.drawImage(canvas, 1, 0, width - 1, height, 0, 0, width - 1, height);
+      if (writeX >= bufferWidth) {
+        const retainedWidth = bufferWidth - width;
+        context.drawImage(canvas, width, 0, retainedWidth, height, 0, 0, retainedWidth, height);
+        context.clearRect(retainedWidth, 0, width, height);
+        writeX = retainedWidth;
+        writeXRef.current = writeX;
       }
 
       for (let y = 0; y < height; y += 1) {
@@ -102,18 +113,24 @@ export function Spectrogram({
         pixels[offset + 3] = 255;
       }
 
-      context.putImageData(column, width - 1, 0);
+      context.putImageData(column, writeX, 0);
+      writeX += 1;
+      writeXRef.current = writeX;
     };
 
     animationFrame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animationFrame);
-  }, [analyser, height, isPlaying, maxFrequency, minFrequency, width]);
+  }, [analyser, bufferWidth, height, isPlaying, liveViewOffset, maxFrequency, minFrequency, width]);
 
   return (
     <canvas
       ref={canvasRef}
       aria-label="Live microphone spectrogram"
-      className="pointer-events-none absolute inset-0 size-full"
+      className="pointer-events-none absolute inset-y-0 left-0 h-full max-w-none"
+      style={{
+        width: bufferWidth,
+        transform: `translateX(${-liveViewOffset + panOffsetPixels}px)`,
+      }}
     />
   );
 }
