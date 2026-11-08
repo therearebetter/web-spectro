@@ -1,12 +1,7 @@
 import { Button } from "./components/ui/button";
-import {
-  ChevronRightIcon,
-  MoonIcon,
-  PauseIcon,
-  PlayIcon,
-  SunIcon,
-} from "lucide-react";
+import { ChevronRightIcon, MoonIcon, MusicIcon, PauseIcon, PlayIcon, SunIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Separator } from "./components/ui/separator";
 
 type ToolbarProps = {
   isDarkMode: boolean;
@@ -30,21 +25,25 @@ export function Toolbar({
   setSettingsOpen,
 }: ToolbarProps) {
   return (
-    <div className="flex shrink-0 items-center gap-3">
+    <div className="flex shrink-0 items-center gap-4">
       <Button
         type="button"
         variant="default"
         aria-label={isPlaying ? "Pause spectrogram" : "Play spectrogram"}
         disabled={isRequestingMicrophone}
         onClick={onTogglePlayback}
+        className="w-24 justify-start"
       >
         {isPlaying ? <PauseIcon /> : <PlayIcon />}
         {isPlaying ? "Pause" : "Play"}
       </Button>
+      <Separator orientation="vertical" className="bg-muted-foreground w-px" />
+      <MusicIcon className="text-muted-foreground" />
       <Button
         variant="outline"
         aria-expanded={isSettingsOpen}
         onClick={() => setSettingsOpen(!isSettingsOpen)}
+        className="ml-auto"
       >
         <ChevronRightIcon
           className={cn(
@@ -54,13 +53,7 @@ export function Toolbar({
         />
         Settings
       </Button>
-      <Button
-        type="button"
-        variant="outline"
-        aria-pressed={isDarkMode}
-        className="ml-auto"
-        onClick={onToggleDarkMode}
-      >
+      <Button type="button" variant="outline" aria-pressed={isDarkMode} onClick={onToggleDarkMode}>
         {isDarkMode ? <SunIcon /> : <MoonIcon />}
       </Button>
       {microphoneError && (

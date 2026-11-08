@@ -2,10 +2,8 @@ import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "re
 import { useRef } from "react";
 
 const TIME_TICK_POSITIONS = [0, 1 / 3, 2 / 3, 1];
-const MIN_FREQUENCY = 60;
-const MAX_FREQUENCY = 1_000;
-const FREQUENCY_LABELS = [60, 70, 80, 90, 100, 125, 150, 200, 250, 300, 400, 500, 600, 800, 1_000];
-const GRID_FREQUENCIES = [60, 100, 200, 400, 600, 800, 1_000];
+const DENSE_FREQUENCY_TICKS = [60, 70, 80, 90, 100, 125, 150, 200, 250, 300, 400, 500, 600, 800, 1_000];
+const WIDE_FREQUENCY_TICKS = [20, 50, 100, 200, 500, 1_000, 2_000, 5_000, 10_000, 20_000];
 
 type SpectrogramAxesProps = {
   width: number;
@@ -15,6 +13,8 @@ type SpectrogramAxesProps = {
   onTimeRangeChange: (seconds: number) => void;
   minColor: number;
   maxColor: number;
+  minFrequency: number;
+  maxFrequency: number;
   panOffsetPixels: number;
   onPanOffsetChange: (offset: number) => void;
   onStartPanning: () => void;
@@ -35,13 +35,28 @@ export function SpectrogramAxes({
   onTimeRangeChange,
   minColor,
   maxColor,
+  minFrequency,
+  maxFrequency,
   panOffsetPixels,
   onPanOffsetChange,
   onStartPanning,
   plotRef,
   children,
 }: SpectrogramAxesProps) {
-  const logRange = Math.log(MAX_FREQUENCY / MIN_FREQUENCY);
+  const logRange = Math.log(maxFrequency / minFrequency);
+  const baseFrequencyTicks = maxFrequency / minFrequency > 20
+    ? WIDE_FREQUENCY_TICKS
+    : DENSE_FREQUENCY_TICKS;
+  const frequencyTicks = [...new Set([
+    minFrequency,
+    ...baseFrequencyTicks.filter((frequency) => frequency > minFrequency && frequency < maxFrequency),
+    maxFrequency,
+  ])].sort((a, b) => a - b);
+  const gridFrequencies = [...new Set([
+    minFrequency,
+    ...baseFrequencyTicks.filter((frequency) => frequency > minFrequency && frequency < maxFrequency),
+    maxFrequency,
+  ])].sort((a, b) => a - b);
   const decibelTickCount = Math.min(5, Math.floor(maxColor - minColor) + 1);
   const dragRef = useRef<{
     pointerId: number;
@@ -63,11 +78,11 @@ export function SpectrogramAxes({
   };
 
   return (
-    <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[110px_minmax(0,1fr)_90px] grid-rows-[minmax(0,1fr)_32px] overflow-hidden">
+    <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[84px_minmax(0,1fr)_90px] grid-rows-[minmax(0,1fr)_32px] overflow-hidden">
       <svg
         aria-hidden="true"
         className="row-start-1 h-full w-full select-none text-muted-foreground"
-        viewBox={`0 0 110 ${height}`}
+        viewBox={`0 0 84 ${height}`}
         preserveAspectRatio="none"
       >
         <text
@@ -75,19 +90,19 @@ export function SpectrogramAxes({
           y={height / 2}
           textAnchor="middle"
           transform={`rotate(-90 10 ${height / 2})`}
-          className="fill-current text-[10px]"
+          className="fill-current text-[15px]"
         >
           Frequency (Hz)
         </text>
-        <line x1="108" y1="0" x2="108" y2={height} className="stroke-border" />
-        {FREQUENCY_LABELS.map((frequency) => {
-          const y = height * (1 - Math.log(frequency / MIN_FREQUENCY) / logRange);
-          const labelY = Math.max(9, Math.min(height - 2, y + 3));
+        <line x1="82" y1="0" x2="82" y2={height} className="stroke-border" />
+        {frequencyTicks.map((frequency) => {
+          const y = height * (1 - Math.log(frequency / minFrequency) / logRange);
+          const labelY = Math.max(15, Math.min(height - 5, y + 3));
 
           return (
             <g key={frequency}>
-              <line x1="103" y1={y} x2="108" y2={y} className="stroke-muted-foreground/60" />
-              <text x="100" y={labelY} textAnchor="end" className="fill-current text-[10px]">
+              <line x1="77" y1={y} x2="82" y2={y} className="stroke-muted-foreground/60" />
+              <text x="74" y={labelY} textAnchor="end" className="fill-current text-[15px]">
                 {frequency}
               </text>
             </g>
@@ -105,8 +120,8 @@ export function SpectrogramAxes({
           viewBox={`0 0 ${width} ${height}`}
           preserveAspectRatio="none"
         >
-          {GRID_FREQUENCIES.map((frequency) => {
-            const y = height * (1 - Math.log(frequency / MIN_FREQUENCY) / logRange);
+          {gridFrequencies.map((frequency) => {
+            const y = height * (1 - Math.log(frequency / minFrequency) / logRange);
             return (
               <line
                 key={frequency}
@@ -115,8 +130,8 @@ export function SpectrogramAxes({
                 x2={width}
                 y2={y}
                 className="stroke-current"
-                strokeOpacity={frequency === 60 || frequency === 1_000 ? "0.4" : "0.18"}
-                strokeWidth={frequency === 60 || frequency === 1_000 ? "1.25" : "1"}
+                strokeOpacity={frequency === minFrequency || frequency === maxFrequency ? "0.4" : "0.18"}
+                strokeWidth={frequency === minFrequency || frequency === maxFrequency ? "1.25" : "1"}
               />
             );
           })}
@@ -146,7 +161,7 @@ export function SpectrogramAxes({
           y={height / 2}
           textAnchor="middle"
           transform={`rotate(90 78 ${height / 2})`}
-          className="fill-current text-[10px]"
+          className="fill-current text-[15px]"
         >
           Level (dB)
         </text>
@@ -160,8 +175,8 @@ export function SpectrogramAxes({
               <line x1="18" y1={y} x2="22" y2={y} className="stroke-muted-foreground/60" />
               <text
                 x="25"
-                y={Math.max(9, Math.min(height - 2, y + 3))}
-                className="fill-current text-[10px]"
+                y={Math.max(15, Math.min(height - 5, y + 3))}
+                className="fill-current text-[15px]"
               >
                 {value}
               </text>
@@ -212,7 +227,7 @@ export function SpectrogramAxes({
         viewBox={`0 0 ${width} 32`}
         preserveAspectRatio="none"
       >
-        <text x={width / 2} y="28" textAnchor="middle" className="fill-current text-[10px]">
+        <text x={width / 2} y="28" textAnchor="middle" className="fill-current text-[15px]">
           Time
         </text>
         {TIME_TICK_POSITIONS.map((position) => {
@@ -223,7 +238,7 @@ export function SpectrogramAxes({
           return (
             <g key={position}>
               <line x1={x} y1="0" x2={x} y2="5" className="stroke-muted-foreground/60" />
-              <text x={x} y="14" textAnchor={anchor} className="fill-current text-[10px]">
+              <text x={x} y="14" textAnchor={anchor} className="fill-current text-[15px]">
                 {formatTime(ageSeconds)}
               </text>
             </g>

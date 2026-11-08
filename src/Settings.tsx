@@ -11,6 +11,10 @@ type SettingsProps = {
   onTimeRangeChange: (value: number) => void;
   yResolution: number;
   onYResolutionChange: (value: number) => void;
+  minFrequency: number;
+  onMinFrequencyChange: (value: number) => void;
+  maxFrequency: number;
+  onMaxFrequencyChange: (value: number) => void;
   minColor: number;
   onMinColorChange: (value: number) => void;
   maxColor: number;
@@ -18,6 +22,19 @@ type SettingsProps = {
 };
 
 const FFT_SIZES = [2_048, 4_096, 8_192, 16_384, 32_768];
+const MIN_ALLOWED_FREQUENCY = 20;
+const MAX_ALLOWED_FREQUENCY = 20_000;
+
+function frequencyToSliderValue(frequency: number) {
+  return Math.log(frequency / MIN_ALLOWED_FREQUENCY) /
+    Math.log(MAX_ALLOWED_FREQUENCY / MIN_ALLOWED_FREQUENCY);
+}
+
+function sliderValueToFrequency(value: number) {
+  return Math.round(
+    MIN_ALLOWED_FREQUENCY * (MAX_ALLOWED_FREQUENCY / MIN_ALLOWED_FREQUENCY) ** value,
+  );
+}
 
 function NumberInput({
   id,
@@ -92,11 +109,7 @@ function NumberInput({
           ) {
             return;
           }
-          if (
-            allowNegative &&
-            event.key === "-" &&
-            !draft.startsWith("-")
-          ) {
+          if (allowNegative && event.key === "-" && !draft.startsWith("-")) {
             return;
           }
           event.preventDefault();
@@ -201,14 +214,18 @@ export function Settings({
   onTimeRangeChange,
   yResolution,
   onYResolutionChange,
+  minFrequency,
+  onMinFrequencyChange,
+  maxFrequency,
+  onMaxFrequencyChange,
   minColor,
   onMinColorChange,
   maxColor,
   onMaxColorChange,
 }: SettingsProps) {
   return (
-    <div className="flex flex-col gap-4 rounded-md border bg-card p-4 text-card-foreground shadow-sm sm:flex-row sm:items-stretch">
-      <div className="min-w-0 flex-1">
+    <div className="flex flex-col gap-4 rounded-md border bg-card p-4 text-card-foreground shadow-sm xl:flex-row xl:items-stretch">
+      <div className="min-w-0 xl:flex-1">
         <NumberSetting
           id="time-range"
           label="Time range"
@@ -223,10 +240,10 @@ export function Settings({
       <Separator
         decorative
         orientation="vertical"
-        className="hidden min-h-24 self-stretch bg-muted-foreground/40 sm:block"
+        className="hidden min-h-24 self-stretch xl:block"
       />
-      <Separator decorative className="h-px bg-muted-foreground/40 sm:hidden" />
-      <div className="min-w-0 flex-1 grid gap-2">
+      <Separator decorative className="h-px xl:hidden" />
+      <div className="min-w-0 grid gap-2 xl:flex-1">
         <div className="grid gap-1">
           <Label htmlFor="y-resolution">Y-axis resolution</Label>
           <p className="text-xs text-muted-foreground">
@@ -267,10 +284,10 @@ export function Settings({
       <Separator
         decorative
         orientation="vertical"
-        className="hidden min-h-24 self-stretch bg-muted-foreground/40 sm:block"
+        className="hidden min-h-24 self-stretch xl:block"
       />
-      <Separator decorative className="h-px bg-muted-foreground/40 sm:hidden" />
-      <div className="min-w-0 flex-1 grid gap-2">
+      <Separator decorative className="h-px xl:hidden" />
+      <div className="min-w-0 grid gap-2 xl:flex-1">
         <div className="grid gap-1">
           <div className="text-sm leading-none font-medium">Color level</div>
           <p className="text-xs text-muted-foreground">
@@ -312,6 +329,58 @@ export function Settings({
                 onChange={onMaxColorChange}
               />
               <span className="text-xs text-muted-foreground">dB</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <Separator orientation="horizontal" className="xl:hidden" />
+      <Separator
+        decorative
+        orientation="vertical"
+        className="hidden min-h-24 self-stretch xl:block"
+      />
+      <div className="min-w-0 grid gap-2 xl:flex-1">
+        <div className="grid gap-1">
+          <div className="text-sm leading-none font-medium">Frequency range</div>
+          <p className="text-xs text-muted-foreground">
+            Set the logarithmic range shown on the Y axis.
+          </p>
+        </div>
+        <div className="grid gap-2">
+          <Slider
+            aria-label="Frequency range"
+            min={0}
+            max={1}
+            step={0.001}
+            minStepsBetweenThumbs={1}
+            value={[frequencyToSliderValue(minFrequency), frequencyToSliderValue(maxFrequency)]}
+            onValueChange={([lower, upper]) => {
+              if (lower !== undefined) onMinFrequencyChange(sliderValueToFrequency(lower));
+              if (upper !== undefined) onMaxFrequencyChange(sliderValueToFrequency(upper));
+            }}
+          />
+          <div className="flex items-center justify-between">
+            <div className="flex w-28 items-center gap-1">
+              <NumberInput
+                id="min-frequency"
+                label="Minimum frequency"
+                value={minFrequency}
+                min={MIN_ALLOWED_FREQUENCY}
+                max={MAX_ALLOWED_FREQUENCY - 1}
+                onChange={onMinFrequencyChange}
+              />
+              <span className="text-xs text-muted-foreground">Hz</span>
+            </div>
+            <div className="flex w-28 items-center gap-1">
+              <NumberInput
+                id="max-frequency"
+                label="Maximum frequency"
+                value={maxFrequency}
+                min={MIN_ALLOWED_FREQUENCY + 1}
+                max={MAX_ALLOWED_FREQUENCY}
+                onChange={onMaxFrequencyChange}
+              />
+              <span className="text-xs text-muted-foreground">Hz</span>
             </div>
           </div>
         </div>

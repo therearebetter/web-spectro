@@ -12,6 +12,8 @@ const SETTINGS_STORAGE_KEY = "spectrogram-settings";
 const DEFAULT_SETTINGS = {
   timeRange: 8,
   yResolution: 8_192,
+  minFrequency: 60,
+  maxFrequency: 1_000,
   minColor: -100,
   maxColor: -25,
 };
@@ -29,6 +31,12 @@ function loadSettings() {
     const yResolution = ALLOWED_FFT_SIZES.includes(saved.yResolution)
       ? saved.yResolution
       : DEFAULT_SETTINGS.yResolution;
+    const hasValidFrequencyRange =
+      Number.isInteger(saved.minFrequency) &&
+      Number.isInteger(saved.maxFrequency) &&
+      saved.minFrequency >= 20 &&
+      saved.maxFrequency <= 20_000 &&
+      saved.minFrequency < saved.maxFrequency;
     const hasValidColorRange =
       Number.isInteger(saved.minColor) &&
       Number.isInteger(saved.maxColor) &&
@@ -39,6 +47,12 @@ function loadSettings() {
     return {
       timeRange,
       yResolution,
+      minFrequency: hasValidFrequencyRange
+        ? saved.minFrequency
+        : DEFAULT_SETTINGS.minFrequency,
+      maxFrequency: hasValidFrequencyRange
+        ? saved.maxFrequency
+        : DEFAULT_SETTINGS.maxFrequency,
       minColor: hasValidColorRange ? saved.minColor : DEFAULT_SETTINGS.minColor,
       maxColor: hasValidColorRange ? saved.maxColor : DEFAULT_SETTINGS.maxColor,
     };
@@ -58,6 +72,8 @@ export function App() {
   const [panOffsetPixels, setPanOffsetPixels] = useState(0);
   const [timeRange, setTimeRange] = useState(savedSettings.timeRange);
   const [yResolution, setYResolution] = useState(savedSettings.yResolution);
+  const [minFrequency, setMinFrequency] = useState(savedSettings.minFrequency);
+  const [maxFrequency, setMaxFrequency] = useState(savedSettings.maxFrequency);
   const [minColor, setMinColor] = useState(savedSettings.minColor);
   const [maxColor, setMaxColor] = useState(savedSettings.maxColor);
   const audioRef = useRef<{ stream: MediaStream; context: AudioContext } | null>(null);
@@ -75,12 +91,12 @@ export function App() {
 
     const observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
-        const nextSize = {
+      const nextSize = {
         width: Math.floor(entry.contentRect.width),
         height: Math.floor(entry.contentRect.height),
-        };
-        setStageSize(nextSize);
-        setPanOffsetPixels((offset) => Math.min(offset, nextSize.width * 3));
+      };
+      setStageSize(nextSize);
+      setPanOffsetPixels((offset) => Math.min(offset, nextSize.width * 3));
     });
 
     observer.observe(container);
@@ -94,9 +110,9 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(
       SETTINGS_STORAGE_KEY,
-      JSON.stringify({ timeRange, yResolution, minColor, maxColor }),
+      JSON.stringify({ timeRange, yResolution, minFrequency, maxFrequency, minColor, maxColor }),
     );
-  }, [maxColor, minColor, timeRange, yResolution]);
+  }, [maxColor, maxFrequency, minColor, minFrequency, timeRange, yResolution]);
 
   useEffect(() => {
     if (!analyser) return;
@@ -195,7 +211,7 @@ export function App() {
   return (
     <div
       className={cn(
-        "flex h-dvh w-full flex-col gap-3 overflow-hidden bg-background p-3 text-foreground",
+        "flex h-dvh w-full flex-col gap-4 overflow-hidden bg-background p-4 text-foreground",
         isDarkMode && "dark",
       )}
     >
@@ -214,7 +230,7 @@ export function App() {
         inert={!isSettingsOpen}
         className={cn(
           "grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
-          isSettingsOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+          isSettingsOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 -my-2",
         )}
       >
         <div className="min-h-0 overflow-hidden">
@@ -223,6 +239,10 @@ export function App() {
             onTimeRangeChange={changeTimeRange}
             yResolution={yResolution}
             onYResolutionChange={setYResolution}
+            minFrequency={minFrequency}
+            onMinFrequencyChange={(value) => setMinFrequency(Math.min(value, maxFrequency - 1))}
+            maxFrequency={maxFrequency}
+            onMaxFrequencyChange={(value) => setMaxFrequency(Math.max(value, minFrequency + 1))}
             minColor={minColor}
             onMinColorChange={(value) => setMinColor(Math.min(value, maxColor - 1))}
             maxColor={maxColor}
@@ -239,6 +259,8 @@ export function App() {
         onTimeRangeChange={changeTimeRange}
         minColor={minColor}
         maxColor={maxColor}
+        minFrequency={minFrequency}
+        maxFrequency={maxFrequency}
         panOffsetPixels={panOffsetPixels}
         onPanOffsetChange={setPanOffsetPixels}
         onStartPanning={() => setIsPlaying(false)}
@@ -248,8 +270,8 @@ export function App() {
           isPlaying={isPlaying}
           width={stageSize.width}
           height={stageSize.height}
-          minFrequency={60}
-          maxFrequency={1_000}
+          minFrequency={minFrequency}
+          maxFrequency={maxFrequency}
           panOffsetPixels={panOffsetPixels}
           timeRangeSeconds={timeRange}
           yResolution={yResolution}
