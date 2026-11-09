@@ -1,5 +1,14 @@
 import { Button } from "./components/ui/button";
-import { ChevronRightIcon, MoonIcon, MusicIcon, PauseIcon, PlayIcon, SunIcon } from "lucide-react";
+import {
+  BookIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  MoonIcon,
+  MusicIcon,
+  PauseIcon,
+  PlayIcon,
+  SunIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "./components/ui/separator";
 import type { NoteOption } from "./lib/notes";
@@ -53,10 +62,16 @@ export function Toolbar({
         {isPlaying ? <PauseIcon /> : <PlayIcon />}
         {isPlaying ? "Pause" : "Play"}
       </Button>
+      <Button variant="outline">
+        <BookIcon />{" "}
+        <span>
+          <u>E</u>xamples
+        </span>
+      </Button>
       <Separator orientation="vertical" className="bg-muted-foreground w-px" />
       <MusicIcon className="text-muted-foreground" />
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        {notes.map((note) => (
+        {notes.map((note, index) => (
           <Button
             key={note.midi}
             type="button"
@@ -97,7 +112,7 @@ export function Toolbar({
               "active:scale-95 active:brightness-75 data-[pressed=true]:scale-95 data-[pressed=true]:brightness-75",
             )}
           >
-            {note.name}
+            {note.name} <span className="text-muted-foreground underline text-xs">{index + 1}</span>
           </Button>
         ))}
       </div>
@@ -112,13 +127,15 @@ export function Toolbar({
         aria-expanded={isSettingsOpen}
         onClick={() => setSettingsOpen(!isSettingsOpen)}
       >
-        <ChevronRightIcon
+        <span>
+          <u>S</u>ettings
+        </span>
+        <ChevronLeftIcon
           className={cn(
             "transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isSettingsOpen && "rotate-90",
+            isSettingsOpen && "-rotate-90",
           )}
         />
-        Settings
       </Button>
 
       {microphoneError && (
