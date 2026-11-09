@@ -1,7 +1,7 @@
 import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
 import { useRef } from "react";
 import type { NoteOption } from "./lib/notes";
-import { NOTE_OPTIONS, noteColor } from "./lib/notes";
+import { NOTE_OPTIONS } from "./lib/notes";
 
 const TIME_TICK_POSITIONS = [0, 1 / 3, 2 / 3, 1];
 const DENSE_FREQUENCY_TICKS = [60, 70, 80, 90, 100, 125, 150, 200, 250, 300, 400, 500, 600, 800, 1_000];
@@ -22,6 +22,9 @@ type SpectrogramAxesProps = {
   highlightedNoteFrequency: number | null;
   highlightedNoteColor: string | null;
   selectedNotes: NoteOption[];
+  onHoverNote: (midi: number | null) => void;
+  onStartNote: (midi: number) => void;
+  onStopNote: (midi: number) => void;
   isDarkMode: boolean;
   panOffsetPixels: number;
   onPanOffsetChange: (offset: number) => void;
@@ -48,6 +51,9 @@ export function SpectrogramAxes({
   highlightedNoteFrequency,
   highlightedNoteColor,
   selectedNotes,
+  onHoverNote,
+  onStartNote,
+  onStopNote,
   isDarkMode,
   panOffsetPixels,
   onPanOffsetChange,
@@ -152,7 +158,6 @@ export function SpectrogramAxes({
             .filter((note) => note.frequency >= minFrequency && note.frequency <= maxFrequency)
             .map((note) => {
               const y = height * (1 - Math.log(note.frequency / minFrequency) / logRange);
-              const color = noteColor(note.color, isDarkMode);
               const labelY = Math.max(13, Math.min(height - 3, y - 5));
               return (
                 <g key={`selected-note-${note.midi}`}>
@@ -161,14 +166,18 @@ export function SpectrogramAxes({
                     y1={y}
                     x2={width}
                     y2={y}
-                    stroke={color}
-                    strokeOpacity="0.65"
-                    strokeWidth="1.5"
+                    stroke="#000"
+                    strokeWidth="5"
+                  />
+                  <line
+                    x1="0" y1={y} x2={width} y2={y}
+                    stroke="#fff"
+                    strokeWidth="2.5"
                   />
                   <text
                     x="6"
                     y={labelY}
-                    fill={color}
+                    fill={isDarkMode ? "#fff" : "#111"}
                     stroke="var(--background)"
                     strokeWidth="4"
                     strokeLinejoin="round"
@@ -224,6 +233,25 @@ export function SpectrogramAxes({
               );
             })()}
         </svg>
+        {selectedNotes
+          .filter((note) => note.frequency >= minFrequency && note.frequency <= maxFrequency)
+          .map((note) => {
+            const y = height * (1 - Math.log(note.frequency / minFrequency) / logRange);
+            return (
+              <button
+                key={`note-hit-${note.midi}`}
+                type="button"
+                aria-label={`Play ${note.name}`}
+                title={`Play ${note.name}`}
+                className="absolute left-0 z-20 h-8 w-full -translate-y-1/2 cursor-pointer border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-yellow-300"
+                style={{ top: y }}
+                onPointerEnter={() => { onHoverNote(note.midi); onStartNote(note.midi); }}
+                onPointerLeave={() => { onHoverNote(null); onStopNote(note.midi); }}
+                onFocus={() => { onHoverNote(note.midi); onStartNote(note.midi); }}
+                onBlur={() => { onHoverNote(null); onStopNote(note.midi); }}
+              />
+            );
+          })}
         {children}
       </div>
 

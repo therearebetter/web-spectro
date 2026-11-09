@@ -442,6 +442,9 @@ export function App() {
           return note ? noteColor(note.color, isDarkMode) : null;
         })()}
         selectedNotes={NOTE_OPTIONS.filter((note) => enabledNotes.includes(note.midi))}
+        onHoverNote={hoverNote}
+        onStartNote={(midi) => startHeldNote(midi, false)}
+        onStopNote={stopSustainedNote}
         isDarkMode={isDarkMode}
         panOffsetPixels={panOffsetPixels}
         onPanOffsetChange={setPanOffsetPixels}
@@ -461,7 +464,7 @@ export function App() {
           maxColor={maxColor}
         />
         <Stage
-          className="absolute inset-0 z-20"
+          className="pointer-events-none absolute inset-0 z-0"
           width={stageSize.width}
           height={stageSize.height}
           style={{ transform: `translateX(${panOffsetPixels}px)` }}
