@@ -1,4 +1,12 @@
-# Bun + React SPA
+# Web spectro
+
+https://therearebetter.github.io/web-spectro/
+
+Web app spectrogram, it can be used for whatever a spectrogram is meant to be used for (:
+
+<img width="2534" height="1184" alt="image" src="https://github.com/user-attachments/assets/0819e1fa-0ecf-401b-b1b0-32b9e76b0ec9" />
+
+## Unimportant stuff
 
 To install dependencies:
 
@@ -22,7 +30,7 @@ The build writes a static single-page app to `dist/`. Deploy those files to any
 static host configured to serve `index.html` for application routes. The app
 does not include an API or application server.
 
-## Publish on GitHub Pages
+### Publish on GitHub Pages
 
 The `Deploy to GitHub Pages` workflow builds the site with Bun and publishes
 `dist/` whenever a commit is pushed to `main`. It can also be started manually
