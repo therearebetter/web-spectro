@@ -25,7 +25,6 @@ type SpectrogramAxesProps = {
   onHoverNote: (midi: number | null) => void;
   onStartNote: (midi: number) => void;
   onStopNote: (midi: number) => void;
-  isDarkMode: boolean;
   panOffsetPixels: number;
   onPanOffsetChange: (offset: number) => void;
   onStartPanning: () => void;
@@ -54,7 +53,6 @@ export function SpectrogramAxes({
   onHoverNote,
   onStartNote,
   onStopNote,
-  isDarkMode,
   panOffsetPixels,
   onPanOffsetChange,
   onStartPanning,
@@ -177,7 +175,7 @@ export function SpectrogramAxes({
                   <text
                     x="6"
                     y={labelY}
-                    fill={isDarkMode ? "#fff" : "#111"}
+                    fill="#fff"
                     stroke="var(--background)"
                     strokeWidth="4"
                     strokeLinejoin="round"

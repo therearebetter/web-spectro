@@ -75,7 +75,6 @@ function loadSettings() {
 }
 
 export function App() {
-  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem("theme") === "dark");
   const [savedSettings] = useState(loadSettings);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
@@ -130,10 +129,6 @@ export function App() {
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem("theme", isDarkMode ? "dark" : "light");
-  }, [isDarkMode]);
 
   useEffect(() => {
     localStorage.setItem(
@@ -370,8 +365,6 @@ export function App() {
       )}
     >
       <Toolbar
-        isDarkMode={isDarkMode}
-        onToggleDarkMode={() => setIsDarkMode((dark) => !dark)}
         isPlaying={isPlaying}
         isRequestingMicrophone={isRequestingMicrophone}
         onTogglePlayback={togglePlayback}
@@ -439,13 +432,12 @@ export function App() {
           const midi = hoveredNoteMidi ?? clickedNoteMidi;
           const note =
             midi === null ? undefined : NOTE_OPTIONS.find((option) => option.midi === midi);
-          return note ? noteColor(note.color, isDarkMode) : null;
+          return note ? noteColor(note.color) : null;
         })()}
         selectedNotes={NOTE_OPTIONS.filter((note) => enabledNotes.includes(note.midi))}
         onHoverNote={hoverNote}
         onStartNote={(midi) => startHeldNote(midi, false)}
         onStopNote={stopSustainedNote}
-        isDarkMode={isDarkMode}
         panOffsetPixels={panOffsetPixels}
         onPanOffsetChange={setPanOffsetPixels}
         onStartPanning={() => setIsPlaying(false)}

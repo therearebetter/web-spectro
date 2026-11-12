@@ -20,15 +20,10 @@ export const NOTE_OPTIONS: NoteOption[] = Array.from({ length: 24 }, (_, index) 
 
 export const DEFAULT_NOTE_IDS = [49, 55, 63];
 
-export function noteColor(color: NoteOption["color"], isDarkMode: boolean) {
-  if (isDarkMode) {
-    if (color === "blue") return "#7dd3fc";
-    if (color === "pink") return "#f9a8d4";
-    return "#c4b5fd";
-  }
-  if (color === "blue") return "#0284c7";
-  if (color === "pink") return "#db2777";
-  return "#7c3aed";
+export function noteColor(color: NoteOption["color"]) {
+  if (color === "blue") return "#7dd3fc";
+  if (color === "pink") return "#f9a8d4";
+  return "#c4b5fd";
 }
 
 export function noteButtonClass(color: NoteOption["color"]) {

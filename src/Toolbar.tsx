@@ -2,12 +2,9 @@ import { Button } from "./components/ui/button";
 import {
   BookIcon,
   ChevronLeftIcon,
-  ChevronRightIcon,
-  MoonIcon,
   MusicIcon,
   PauseIcon,
   PlayIcon,
-  SunIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "./components/ui/separator";
@@ -15,8 +12,6 @@ import type { NoteOption } from "./lib/notes";
 import { noteButtonClass } from "./lib/notes";
 
 type ToolbarProps = {
-  isDarkMode: boolean;
-  onToggleDarkMode: () => void;
   isPlaying: boolean;
   isRequestingMicrophone: boolean;
   onTogglePlayback: () => void;
@@ -33,8 +28,6 @@ type ToolbarProps = {
 };
 
 export function Toolbar({
-  isDarkMode,
-  onToggleDarkMode,
   isPlaying,
   isRequestingMicrophone,
   onTogglePlayback,
